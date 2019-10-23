@@ -9,7 +9,9 @@ module.exports = {
 
     // used to read last message sent by other person
     last_message: '#main div.message-in',
-
+    last_message_text: 'span.selectable-text.invisible-space.copyable-text > span',
+    
+    
     // last message sent by you
     last_message_sent: '#main div.message-out span.selectable-text:last-child',
 

@@ -1,7 +1,7 @@
 {
-  "name": "whatspup",
+  "name": "whatspup-api",
   "version": "1.0.0",
-  "description": "An application to use whatsapp via cli",
+  "description": "An api whatsapp application",
   "main": "chat.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,7 +10,7 @@
     "whatsapp",
     "node"
   ],
-  "author": "Sarfraz Ahmed",
+  "author": "Sarfraz Ahmed, Gabriel Alvarez",
   "license": "MIT",
   "dependencies": {
     "ansi-escapes": "^3.0.0",
@@ -20,6 +20,7 @@
     "log-symbols": "^2.1.0",
     "node-notifier": "^5.1.2",
     "puppeteer": "^1.0.0",
-    "winston": "^2.4.0"
+    "winston": "^2.4.0",
+    "https": "^1.0.0"
   }
 }

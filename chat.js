@@ -11,31 +11,20 @@ const logSymbols = require('log-symbols');
 const ansiEscapes = require('ansi-escapes');
 const path = require('path');
 const findChrome = require('./find_chrome');
+const https = require("https");
 
 const config = require('./config.js');
 const selector = require('./selector.js');
 
 process.setMaxListeners(0);
 
-// make sure they specified user to chat with
-if (!process.argv[2]) {
-  console.log(logSymbols.error, chalk.red('User argument not specified, exiting...'));
-  process.exit(1);
-}
+
 
 /////////////////////////////////////////////
 // get user from command line argument
 let user = '';
 let selectorNewMessage=null;
 
-// because a username can contain first and last name/spaces, etc
-for (let i = 2; i <= 5; i++) {
-  if (typeof process.argv[i] !== 'undefined') {
-    user += process.argv[i] + ' ';
-  }
-}
-
-user = user.trim();
 /////////////////////////////////////////////
 
 // catch un-handled promise errors
@@ -43,13 +32,24 @@ process.on("unhandledRejection", (reason, p) => {
   //console.warn("Unhandled Rejection at: Promise", p, "reason:", reason);
 });
 
+String.prototype.hashCode = function() {
+	  var hash = 0, i, chr;
+	  if (this.length === 0) return hash;
+	  for (i = 0; i < this.length; i++) {
+	    chr   = this.charCodeAt(i);
+	    hash  = ((hash << 5) - hash) + chr;
+	    hash |= 0; // Convert to 32bit integer
+	  }
+	  return hash;
+	};
+	
 (async function main() {
 
   const logger = setUpLogging();
 
   try {
 
-    print(boxen('Whatspup', {
+    print(boxen('Whatspup API', {
       padding: 1,
       borderStyle: 'double',
       borderColor: 'green',
@@ -57,10 +57,11 @@ process.on("unhandledRejection", (reason, p) => {
     }));
 
     // custom vars ///////////////////////////////
-    let last_received_message = '';
     let last_received_message_other_user = '';
     let last_sent_message_interval = null;
     let sentMessages = [];
+    
+    let recivedMessages=new Map();
     //////////////////////////////////////////////    
 
     const executablePath = findChrome().pop() || null;
@@ -128,10 +129,11 @@ process.on("unhandledRejection", (reason, p) => {
         console.log(logSymbols.error, chalk.red('Could not open whatsapp web, most likely got browser upgrade message....'));
         process.exit();
       }
-
-      startChat(user);
-
-      readCommands();
+      console.log(logSymbols.success, chalk.bgGreen('Ready'));
+ //     startChat(user);
+      setInterval(readLastOtherPersonMessage, (config.check_message_interval));
+      setInterval(checkNewMessagesAllUsers, (config.check_message_interval));
+  //    readCommands();
     })
 
     // allow user to type on console and read it
@@ -230,95 +232,165 @@ process.on("unhandledRejection", (reason, p) => {
       }, selector.user_name);
     }
 
+    function reSendMessage(message){
+
+
+    	var httpsOptions = {
+    	  host: 'www.todoalojamiento.com',
+    	  port: 443,
+    	  path: '/rest/mensajes/whatsapp/mensaje',
+    	  method: 'POST'
+    	};
+
+    	var req = https.request(httpOptions, function(res) {
+    	  console.log('STATUS: ' + res.statusCode);
+    	  console.log('HEADERS: ' + JSON.stringify(res.headers));
+    	  res.setEncoding('utf8');
+    	  res.on('data', function (chunk) {
+    	    console.log('BODY: ' + chunk);
+    	  });
+    	});
+
+    	req.on('error', function(e) {
+    	  console.log('problem with request: ' + e.message);
+    	});
+
+    	// write data to request body
+    	req.write(message);
+
+    	req.end();
+    	
+    }
+    
     // read any new messages sent by specified user
     async function readLastOtherPersonMessage() {
-
-      let message = '';
+    //    console.log("entro");
+      let messages = [];
       let name = await getCurrentUserName();
-
+      console.log(name);
       if (!name) {
         return false;
       }
 
       // read last message sent by other user
-      message = await page.evaluate((selector) => {
-
+      messages = await page.evaluate((selector,selector_last_message_hour) => {
+    	  let messages=[];
         let nodes = document.querySelectorAll(selector);
-        let el = nodes[nodes.length - 1];
 
-        if (!el) {
-          return '';
+    //    messages.push(nodes.length);
+    //    return messages;
+        
+        for (let i=0;i<nodes.length;i++){
+        	
+	        let el = nodes[i];
+	        if (!el) {
+		          messages.push(['','']);
+		          continue;
+		        }
+        	let hour=''
+    	        
+		        let hourNodes=el.querySelectorAll('span');
+		        for (let j=0;j<hourNodes.length;j++){
+		          let hourTent=hourNodes[j].innerText;
+		          if (/^(((0|1)?[0-9])|2[0-3]):[0-5][0-9]$/.test(hourTent)){
+		        	  hour=hourTent;
+		        	  break;
+		          }
+		        }
+
+	        try{
+
+		        // check if it is picture message
+		
+		        let picNodes = el.querySelectorAll("img[src*='blob']");
+		        let isPicture = picNodes[picNodes.length - 1];
+		
+		        if (isPicture) {
+		        	messages.push([hour,'Picture Message']);
+		        	continue;
+		        }
+		
+		        // check if it is gif message
+		        let gifNodes = el.querySelectorAll("div[style*='background-image']");
+		        let isGif = gifNodes[gifNodes.length - 1];
+		
+		        if (isGif) {
+		        	messages.push([hour,'Gif Message']);
+		        	continue;
+		        	
+		        }
+		
+		        // check if it is video message
+		        let vidNodes = el.querySelectorAll(".video-thumb");
+		        let isVideo = vidNodes[vidNodes.length - 1];
+		
+		        if (isVideo) {
+		        	messages.push([hour,'Video Message']);
+		        	continue;	        	
+		        	
+		        }
+		
+		        // check if it is voice message
+		        let readHTML = el.outerHTML;
+		        let isAudio =readHTML.indexOf('data-icon="audio-play"') > -1;
+		
+		        if (isAudio) {
+		        	messages.push([hour,'Audio Message']);
+		        	continue;
+		        }
+		
+		        // check if it is emoji message
+		        let emojiNodes = el.querySelectorAll("div.selectable-text img.selectable-text");
+		        let isEmoji = emojiNodes[emojiNodes.length - 1];
+		
+		        if (isEmoji) {
+		        	messages.push([hour,'Emogi Message']);
+		        	continue;
+		        }
+		
+		        // text message
+		        textNodes = el.querySelectorAll('span.selectable-text');
+		        let textNode = textNodes[textNodes.length - 1];
+		
+		        let text= textNode ? textNode.innerText : '';
+	        	messages.push([hour,text]);
+		     //   window.alert(el.outerHTML);
+			}catch(error){
+				messages.push([hour,"unknown message type: " + el.outerHTML]);
+			}
         }
 
-        // check if it is picture message
+        return messages;
 
-        /*
-        if (el.classList.contains('message-image')) {
-          return 'Picture Message';
-        }
-        */
+      }, selector.last_message,selector.last_message_hour);
+  //    console.log(messages);
 
-        let picNodes = el.querySelectorAll("img[src*='blob']");
-        let isPicture = picNodes[picNodes.length - 1];
-
-        if (isPicture) {
-          return 'Picture Message';
-        }
-
-        // check if it is gif message
-        let gifNodes = el.querySelectorAll("div[style*='background-image']");
-        let isGif = gifNodes[gifNodes.length - 1];
-
-        if (isGif) {
-          return 'Gif Message';
-        }
-
-        // check if it is video message
-        let vidNodes = el.querySelectorAll(".video-thumb");
-        let isVideo = vidNodes[vidNodes.length - 1];
-
-        if (isVideo) {
-          return 'Video Message';
-        }
-
-        // check if it is voice message
-        let audioNodes = el.querySelectorAll("audio");
-        let isAudio = audioNodes[audioNodes.length - 1];
-
-        if (isAudio) {
-          return 'Voice Message';
-        }
-
-        // check if it is emoji message
-        let emojiNodes = el.querySelectorAll("div.selectable-text img.selectable-text");
-        let isEmoji = emojiNodes[emojiNodes.length - 1];
-
-        if (isEmoji) {
-          return 'Emoji Message';
-        }
-
-        // text message
-        nodes = el.querySelectorAll('span.selectable-text');
-        el = nodes[nodes.length - 1];
-
-        return el ? el.innerText : '';
-
-      }, selector.last_message);
-
-
-      if (message) {
-        if (last_received_message) {
-          if (last_received_message != message) {
-            last_received_message = message;
-            print(name + ": " + message, config.received_message_color);
-
-            // show notification
-            notify(name, message);
-          }
-        } else {
-          last_received_message = message;
-          //print(name + ": " + message, config.received_message_color);
-        }
+      if (messages) {
+    	 
+    	  for (var i = 0; i < messages.length; i++) {
+			let message=messages[i];
+    		  let hash=(message[0]+message[1]).hashCode();
+    	//	  console.log(hash);
+    		//  console.log(recivedMessages);
+    		  let messagesSet= recivedMessages.get(name);
+    		  if (messagesSet==null){
+    		//	  console.log("creo mensajeset "+name);
+    			  messagesSet=new Set();
+    			//  console.log(messagesSet);
+    			  recivedMessages.set(name,messagesSet);
+    		//	  console.log(recivedMessages);
+    		  }
+    		  console.log(messagesSet);
+    		  if (!messagesSet.has(hash)){
+    			  reSendMessage(message[1]);
+       			  console.log(message[1]+" - no esta, lo agrego");
+    	            print(name + ": " + message[1], config.received_message_color);
+    	            messagesSet.add(hash);
+    	            // show notification
+    	            notify(name,message[1]);
+    		  }else console.log(message[1]+" - esta");
+		}
+        
 
       }
     }
@@ -357,10 +429,6 @@ process.on("unhandledRejection", (reason, p) => {
 
     }
 
-    async function getPhoneNumber(){
-    	new_message_user_pic_url
-    }
-    
     // checks for any new messages sent by all other users
     async function checkNewMessagesAllUsers() {
       let name = await getCurrentUserName();
@@ -391,14 +459,14 @@ process.on("unhandledRejection", (reason, p) => {
 
         if (last_received_message_other_user != user[0]) {
  
-        	let message = 'You have a new message by "' + user[0]+";"+user[1] + '". Switch to that user to see the message.';
+        	let message = 'You have a new message by "' + user[0]+";"+user[1] + '".';
           
         	print('\n' + message, config.received_message_color_new_user);
 
         	// show notification
         	notify(user[0]+";"+user[1], message);
 
-        	last_received_message_other_user = user[0];
+        	startChat(user[0]);
         }
       }
     }
@@ -421,7 +489,7 @@ process.on("unhandledRejection", (reason, p) => {
     			return null;
     		}, selector.new_message_count);
     		if (classname==null)
-    			console.log(logSymbols.warning, chalk.bgRed('Not yet found a kind of notification of new messages'));
+    			console.log(logSymbols.warning, chalk.bgRed('Not yet found a class of notification of new messages'));
     		else{
     			selectorNewMessage=selector.new_message.replace('XXXXX', classname);
     			console.log(logSymbols.info, chalk.bgRed('It was generated selector of notification of new messages: '+selectorNewMessage));
@@ -476,8 +544,7 @@ process.on("unhandledRejection", (reason, p) => {
       }
     }
 
-    setInterval(readLastOtherPersonMessage, (config.check_message_interval));
-    setInterval(checkNewMessagesAllUsers, (config.check_message_interval));
+
 
   } catch (err) {
     logger.warn(err);
