@@ -4,6 +4,8 @@ module.exports = {
     // specified user is opened. XXX will be replaced by actual user.
     user_chat: '#pane-side span[title="XXX"]',
 
+    all_users_chat: '#pane-side span[dir="auto"]',
+    
     // textbox selector where message will be typed
     chat_input: '#main > footer div.selectable-text[contenteditable]',
 

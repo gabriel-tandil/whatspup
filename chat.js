@@ -129,12 +129,38 @@ String.prototype.hashCode = function() {
         console.log(logSymbols.error, chalk.red('Could not open whatsapp web, most likely got browser upgrade message....'));
         process.exit();
       }
-      console.log(logSymbols.success, chalk.bgGreen('Ready'));
+
  //     startChat(user);
+      await readPreviousMessages();
+      
+      console.log(logSymbols.success, chalk.bgGreen('Ready'));
       setInterval(readLastOtherPersonMessage, (config.check_message_interval));
       setInterval(checkNewMessagesAllUsers, (config.check_message_interval));
   //    readCommands();
     })
+
+	function sleep(ms){
+	    return new Promise(resolve=>{
+	        setTimeout(resolve,ms)
+	    })
+	}
+    
+    async function readPreviousMessages() {
+      
+        
+        
+        
+        let conversations=  await page.$$(selector.all_users_chat);
+        console.log(conversations.length);
+        
+        for (var i = 0; i < conversations.length; i++) {
+        	await conversations[i].click();
+        	await sleep(4000);
+        	await readLastOtherPersonMessage(false);
+        }
+
+    	
+    }
 
     // allow user to type on console and read it
     function readCommands() {
@@ -220,7 +246,7 @@ String.prototype.hashCode = function() {
       }
 
       // see if they sent a new message
-      readLastOtherPersonMessage();
+   //   readLastOtherPersonMessage();
     }
 
     // read user's name from conversation thread
@@ -263,7 +289,7 @@ String.prototype.hashCode = function() {
     }
     
     // read any new messages sent by specified user
-    async function readLastOtherPersonMessage() {
+    async function readLastOtherPersonMessage(reSend=true) {
     //    console.log("entro");
       let messages = [];
       let name = await getCurrentUserName();
@@ -380,14 +406,17 @@ String.prototype.hashCode = function() {
     			  recivedMessages.set(name,messagesSet);
     		//	  console.log(recivedMessages);
     		  }
-    		  console.log(messagesSet);
+    		//  console.log(messagesSet);
     		  if (!messagesSet.has(hash)){
-    			  reSendMessage(message[1]);
-       			  console.log(message[1]+" - no esta, lo agrego");
-    	            print(name + ": " + message[1], config.received_message_color);
-    	            messagesSet.add(hash);
+    	          messagesSet.add(hash);
+    			  if (reSend){
+    			    reSendMessage(message[1]);
+       			    console.log(message[1]+" - no esta, lo agrego");
+       			    print(name + ": " + message[1], config.received_message_color);
+
     	            // show notification
-    	            notify(name,message[1]);
+       			    notify(name,message[1]);
+    			  }
     		  }else console.log(message[1]+" - esta");
 		}
         
