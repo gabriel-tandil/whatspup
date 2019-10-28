@@ -134,7 +134,7 @@ String.prototype.hashCode = function() {
       await readPreviousMessages();
       
       console.log(logSymbols.success, chalk.bgGreen('Ready'));
-      setInterval(readLastOtherPersonMessage, (config.check_message_interval));
+      setInterval(readLastOtherPersonMessages, (config.check_message_interval));
       setInterval(checkNewMessagesAllUsers, (config.check_message_interval));
   //    readCommands();
     })
@@ -154,11 +154,27 @@ String.prototype.hashCode = function() {
         console.log(conversations.length);
         
         for (var i = 0; i < conversations.length; i++) {
-        	await conversations[i].click();
-        	await sleep(4000);
-        	await readLastOtherPersonMessage(false);
+        	console.log("pre clik")
+// -------------------------FALLA ACA
+        	Promise.race([
+        		 conversations[i].click(),
+        		 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1.0e4))
+        		 ]).catch(function(err) {
+        			 console.log(err);
+        		 })
+        	
+        	
+        	
+        	console.log("clik")
+        	await sleep(10000);
+        	console.log("pedir nombre")
+            let name = await getCurrentUserName();
+            console.log(name);
+            console.log(i);
+        	await readLastOtherPersonMessages(false);
+        	console.log("volvio");
         }
-
+        console.log("termino");
     	
     }
 
@@ -289,8 +305,8 @@ String.prototype.hashCode = function() {
     }
     
     // read any new messages sent by specified user
-    async function readLastOtherPersonMessage(reSend=true) {
-    //    console.log("entro");
+    async function readLastOtherPersonMessages(reSend=true) {
+        console.log("entro");
       let messages = [];
       let name = await getCurrentUserName();
       console.log(name);
@@ -301,18 +317,28 @@ String.prototype.hashCode = function() {
       // read last message sent by other user
       messages = await page.evaluate((selector,selector_last_message_hour) => {
     	  let messages=[];
-        let nodes = document.querySelectorAll(selector);
+        //let nodes = document.querySelectorAll(selector);
+    	  let nodes = document.querySelectorAll("#main div");
 
     //    messages.push(nodes.length);
     //    return messages;
-        
+        let detectedToday=false;
         for (let i=0;i<nodes.length;i++){
         	
 	        let el = nodes[i];
-	        if (!el) {
-		          messages.push(['','']);
-		          continue;
-		        }
+	        if (!el) continue;
+		        
+	        if (!el.className.includes("message-in")){
+	        	if (!el.className.includes("message-out")){
+	        		let texto=el.innerText;
+	        		if (texto=='HOY'){//TODO: TODAY
+	        			detectedToday=true
+	        		}
+	        			
+	        }
+	        	continue;
+	        }
+	        if (!detectedToday) continue;
         	let hour=''
     	        
 		        let hourNodes=el.querySelectorAll('span');
@@ -389,7 +415,7 @@ String.prototype.hashCode = function() {
         return messages;
 
       }, selector.last_message,selector.last_message_hour);
-  //    console.log(messages);
+      console.log(messages);
 
       if (messages) {
     	 
@@ -409,19 +435,21 @@ String.prototype.hashCode = function() {
     		//  console.log(messagesSet);
     		  if (!messagesSet.has(hash)){
     	          messagesSet.add(hash);
+     			    console.log(message[1]);
     			  if (reSend){
     			    reSendMessage(message[1]);
-       			    console.log(message[1]+" - no esta, lo agrego");
+
        			    print(name + ": " + message[1], config.received_message_color);
 
     	            // show notification
        			    notify(name,message[1]);
     			  }
-    		  }else console.log(message[1]+" - esta");
+    		  }
 		}
         
 
       }
+      console.log("salir");
     }
 
     // checks if last message sent is read
@@ -467,7 +495,6 @@ String.prototype.hashCode = function() {
       let user = await page.evaluate((selector_newMessage,selector_newMessageUser,selector_newMessageUserPicUrl) => {
 
     	  let nodes = document.querySelectorAll(selector_newMessage);
-
     	  let el = nodes[0].parentNode.parentNode.parentNode.parentNode.parentNode.querySelector(selector_newMessageUser);
 
     	  let name=el ? el.innerText : '';
@@ -500,6 +527,36 @@ String.prototype.hashCode = function() {
       }
     }
 
+    /**
+    Get the css selector for messages day
+  */
+    async function getSelectorMessagesDay(){
+    	if (selectorMessageDay==null){
+    		let classname = await page.evaluate((selector) => {
+    			let nodes = document.querySelectorAll(selector);
+        
+    			for (let i = 0; i <= nodes.length; i++) {
+    				var style = window.getComputedStyle(nodes[i]);
+    				var borderRadius = style.getPropertyValue('border-radius');
+    				if (borderRadius=='12px')
+    					return nodes[i].className;
+    			}
+
+    			return null;
+    		}, selector.last_message);
+    		if (classname==null)
+    			console.log(logSymbols.warning, chalk.bgRed('Not yet found a class of notification of message day'));
+    		else{
+    			selectorMessageDay=selector.new_message.replace('XXXXX', classname);
+    			console.log(logSymbols.info, chalk.bgRed('It was generated selector of notification of message day: '+selectorMessageDay));
+    		}
+    		
+    	}
+
+        return selectorMessageDay;
+    }
+    
+    
   /**
     Get the css selector for new messages all users
   */
@@ -528,6 +585,35 @@ String.prototype.hashCode = function() {
 
         return selectorNewMessage;
     }
+
+    /**
+    TODO: Get the css selector for today messages 
+  */
+    async function getSelectorTodayMessages(){
+    	if (selectorNewMessage==null){
+    		let classname = await page.evaluate((selector) => {
+    			let nodes = document.querySelectorAll(selector);
+        
+    			for (let i = 0; i <= nodes.length; i++) {
+    				var style = window.getComputedStyle(nodes[i]);
+    				var borderRadius = style.getPropertyValue('border-radius');
+    				if (borderRadius=='12px')
+    					return nodes[i].className;
+    			}
+
+    			return null;
+    		}, selector.new_message_count);
+    		if (classname==null)
+    			console.log(logSymbols.warning, chalk.bgRed('Not yet found a class of notification of new messages'));
+    		else{
+    			selectorNewMessage=selector.new_message.replace('XXXXX', classname);
+    			console.log(logSymbols.info, chalk.bgRed('It was generated selector of notification of new messages: '+selectorNewMessage));
+    		}
+    		
+    	}
+
+        return selectorNewMessage;
+    }    
     
     // prints on console
     function print(message, color = null) {
